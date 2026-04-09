@@ -1,3 +1,6 @@
+using LocalVoiceAssistant.Core;
+using LocalVoiceAssistant.Services;
+
 namespace LocalVoiceAssistant
 {
     static class Program
@@ -7,7 +10,21 @@ namespace LocalVoiceAssistant
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            
+            // 1. Manual Dependency Injection
+            var systemAutomation = new SystemAutomation();
+            
+            var engine = new AssistantEngine(
+                new AudioRecorder(),
+                new SpeechToTextService(),
+                new LlmService(),
+                new TextToSpeechService(),
+                new WakeWordListener(),
+                new CommandProcessor(systemAutomation)
+            );
+
+            // 2. Launch App with injected Engine
+            Application.Run(new MainForm(engine));
         }   
     }
 }

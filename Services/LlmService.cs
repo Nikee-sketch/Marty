@@ -1,14 +1,15 @@
 using System.Text;
 using System.Text.Json;
+using LocalVoiceAssistant.Interfaces;
 
-namespace LocalVoiceAssistant
+namespace LocalVoiceAssistant.Services
 {
-    public class LlmService
+    public class LlmService : ILlmService
     {
         private readonly HttpClient _httpClient;
         private readonly string _modelName;
 
-        public LlmService(string modelName = "llama3")
+        public LlmService(string modelName = "llama3.2")
         {
             _httpClient = new HttpClient();
             _httpClient.BaseAddress = new Uri("http://localhost:11434");

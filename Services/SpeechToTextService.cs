@@ -1,8 +1,9 @@
 using Whisper.net;
+using LocalVoiceAssistant.Interfaces;
 
-namespace LocalVoiceAssistant
+namespace LocalVoiceAssistant.Services
 {
-    public class SpeechToTextService
+    public class SpeechToTextService : ISpeechToTextService
     {
         private WhisperFactory? _factory;
         private WhisperProcessor? _processor;

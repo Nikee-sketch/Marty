@@ -1,8 +1,9 @@
 using NAudio.Wave;
+using LocalVoiceAssistant.Interfaces;
 
-namespace LocalVoiceAssistant
+namespace LocalVoiceAssistant.Services
 {
-    public class AudioRecorder
+    public class AudioRecorder : IAudioRecorder
     {
         private WaveInEvent _waveIn;
         private WaveFileWriter? _writer;

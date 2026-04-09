@@ -1,9 +1,10 @@
 using System;
 using System.Speech.Recognition;
+using LocalVoiceAssistant.Interfaces;
 
-namespace LocalVoiceAssistant
+namespace LocalVoiceAssistant.Services
 {
-    public class WakeWordListener
+    public class WakeWordListener : IWakeWordListener
     {
         private SpeechRecognitionEngine _recognizer;
         public event EventHandler WakeWordDetected;
@@ -32,7 +33,6 @@ namespace LocalVoiceAssistant
 
         public void StartListening()
         {
-            // RecognizeAsync(RecognizeMode.Multiple) runs in background endlessly
             _recognizer.RecognizeAsync(RecognizeMode.Multiple);
         }
 

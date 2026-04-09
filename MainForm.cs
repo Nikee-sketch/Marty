@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using LocalVoiceAssistant.Core;
 
 namespace LocalVoiceAssistant
 {
@@ -6,37 +7,30 @@ namespace LocalVoiceAssistant
     {
         private Button _recordButton;
         private RichTextBox _chatBox;
-        
-        private AudioRecorder _recorder;
-        private SpeechToTextService _stt;
-        private LlmService _llm;
-        private TextToSpeechService _tts;
-        private WakeWordListener _wakeWord;
         private NotifyIcon _trayIcon;
-        private CommandProcessor _cmdProcessor;
         
-        private bool _isRecording;
-        private bool _isSpeaking;
-        private string _tempAudioPath = "recording.wav";
+        private readonly AssistantEngine _engine;
         private bool _isRealClose;
 
-        public MainForm()
+        public MainForm(AssistantEngine engine)
         {
-            InitializeComponents();
+            _engine = engine;
             
-            // Handle form closing to ensure clean shutdown or jump to tray
+            InitializeComponents();
+            WireUpEngineEvents();
+            
             FormClosing += MainForm_FormClosing;
         }
 
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await InitializeAssistantAsync();
+            await _engine.InitializeAsync();
         }
 
         private void InitializeComponents()
         {
-            Text = "Local Voice Assistant";
+            Text = "Marty";
             Size = new Size(500, 600);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(30, 30, 30);
@@ -84,188 +78,85 @@ namespace LocalVoiceAssistant
             
             var contextMenu = new ContextMenuStrip();
             var closeItem = new ToolStripMenuItem("Exit Assistant");
-            closeItem.Click += (_, _) => {
+            closeItem.Click += async (_, _) => {
                 _isRealClose = true;
                 _trayIcon.Visible = false;
+                await _engine.ShutdownAsync();
                 Application.Exit();
             };
             contextMenu.Items.Add(closeItem);
             _trayIcon.ContextMenuStrip = contextMenu;
         }
 
-        private async Task InitializeAssistantAsync()
+        private void WireUpEngineEvents()
         {
-            Log("System", "Initializing Local Voice Assistant...");
-            Log("System", "Loading Whisper and LLaMA models into memory...");
-            Log("System", "Please wait... This might take a few moments depending on your hardware.\n");
+            _engine.MessageLogged += (s, e) => Log(e.speaker, e.message);
             
-            _recorder = new AudioRecorder();
-            _recorder.SilenceDetected += Recorder_SilenceDetected;
-
-            _stt = new SpeechToTextService();
-            _llm = new LlmService("llama3.2");
-            _tts = new TextToSpeechService();
-            _wakeWord = new WakeWordListener();
-            _wakeWord.WakeWordDetected += WakeWord_Detected;
-            _cmdProcessor = new CommandProcessor();
-
-            try
+            _engine.StateChanged += (s, stateStr) => 
             {
-                await _stt.InitializeAsync();
-                
-                Log("System", "Assistant is ready! Say 'Hey' or 'Listen' to start.");
-                _recordButton.Text = "Start Recording";
-                _recordButton.Enabled = true;
-                _recordButton.BackColor = Color.ForestGreen;
-                
-                _wakeWord.StartListening();
-            }
-            catch (Exception ex)
-            {
-                Log("System", $"Error initializing: {ex.Message}");
-                _recordButton.Text = "Initialization Error";
-            }
-        }
-
-        private void WakeWord_Detected(object sender, EventArgs e)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(() => WakeWord_Detected(sender, e));
-                return;
-            }
-
-            if (!_isRecording && !_isSpeaking)
-            {
-                if (WindowState == FormWindowState.Minimized || !Visible)
+                if (stateStr == "Ready")
                 {
-                    Show();
-                    WindowState = FormWindowState.Normal;
+                    UpdateRecordButton("Start Recording", Color.ForestGreen, true);
                 }
-                
-                Log("System", "Wake word detected!");
-                // Trigger recording
-                RecordButton_Click(this, EventArgs.Empty);
-            }
-        }
-
-        private void Recorder_SilenceDetected(object sender, EventArgs e)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(() => Recorder_SilenceDetected(sender, e));
-                return;
-            }
-
-            if (_isRecording)
-            {
-                Log("System", "Silence detected. Stopping recording based on VAD...");
-                RecordButton_Click(this, EventArgs.Empty);
-            }
-        }
-
-        private async void RecordButton_Click(object sender, EventArgs e)
-        {
-            if (_isSpeaking)
-            {
-                _tts.StopSpeaking();
-                Log("System", "AI speech interrupted.");
-                return;
-            }
-
-            if (!_isRecording)
-            {
-                // Start physical recording
-                _isRecording = true;
-                _wakeWord.StopListening(); // Pause wake word so we don't pick it up again while talking
-
-                _recordButton.Text = "Stop Recording";
-                _recordButton.BackColor = Color.Crimson;
-                
-                _recorder.StartRecording(_tempAudioPath);
-                Log("System", "🔴 Recording started... Speak now. (Will auto-stop on silence)");
-            }
-            else
-            {
-                // Stop and process
-                _isRecording = false;
-                _recordButton.Text = "Processing...";
-                _recordButton.Enabled = false;
-                _recordButton.BackColor = Color.DarkGoldenrod;
-                
-                await _recorder.StopRecordingAsync();
-                Log("System", "Recording stopped. Transcribing...");
-
-                await ProcessAudioAsync();
-
-                _recordButton.Text = "Start Recording";
-                _recordButton.Enabled = true;
-                _recordButton.BackColor = Color.ForestGreen;
-                
-                _wakeWord.StartListening(); // Resume wake word detection
-            }
-        }
-
-        private async Task ProcessAudioAsync()
-        {
-            try
-            {
-                string userPrompt = await _stt.TranscribeAsync(_tempAudioPath);
-                if (string.IsNullOrWhiteSpace(userPrompt))
+                else if (stateStr == "Recording...")
                 {
-                    Log("System", "Could not hear you clearly.");
-                    return;
+                    UpdateRecordButton("Stop Recording", Color.Crimson, true);
+                    BringToFrontSafely();
                 }
-                
-                Log("You", userPrompt);
-
-                string aiResponse;
-                if (_cmdProcessor.TryProcessCommand(userPrompt, out string cmdResponse))
+                else if (stateStr == "Processing...")
                 {
-                    Log("System", "Executed Local Command");
-                    aiResponse = cmdResponse;
+                    UpdateRecordButton("Processing...", Color.DarkGoldenrod, false);
+                }
+                else if (stateStr == "Initialization Error")
+                {
+                    UpdateRecordButton("Initialization Error", Color.DarkRed, false);
+                }
+            };
+
+            _engine.SpeakingStateChanged += (s, isSpeaking) =>
+            {
+                if (isSpeaking)
+                {
+                    UpdateRecordButton("Stop Speaking", Color.Orange, true);
                 }
                 else
                 {
-                    Log("System", "Thinking...");
-                    aiResponse = await _llm.GenerateResponseAsync(userPrompt);
+                    // Will naturally be reverted back to Ready by the engine
                 }
-                
-                if (!string.IsNullOrWhiteSpace(aiResponse))
-                {
-                    Log("Assistant", aiResponse);
-                    
-                    _isSpeaking = true;
-                    if (_recordButton.InvokeRequired)
-                    {
-                        _recordButton.Invoke(() => {
-                            _recordButton.Text = "Stop Speaking";
-                            _recordButton.Enabled = true;
-                            _recordButton.BackColor = Color.Orange;
-                        });
-                    }
-                    else
-                    {
-                        _recordButton.Text = "Stop Speaking";
-                        _recordButton.Enabled = true;
-                        _recordButton.BackColor = Color.Orange;
-                    }
+            };
+        }
 
-                    // Run TTS asynchronously so UI doesn't freeze while speaking
-                    await Task.Run(() => _tts.Speak(aiResponse));
-                    
-                    _isSpeaking = false;
-                }
-            }
-            catch (Exception ex)
+        private void BringToFrontSafely()
+        {
+            if (InvokeRequired)
             {
-                Log("System (Error)", ex.Message);
+                Invoke(BringToFrontSafely);
+                return;
             }
-            finally
+
+            if (WindowState == FormWindowState.Minimized || !Visible)
             {
-                if (File.Exists(_tempAudioPath))
-                    File.Delete(_tempAudioPath);
+                Show();
+                WindowState = FormWindowState.Normal;
             }
+        }
+
+        private void UpdateRecordButton(string text, Color backColor, bool enabled)
+        {
+            if (_recordButton.InvokeRequired)
+            {
+                _recordButton.Invoke(() => UpdateRecordButton(text, backColor, enabled));
+                return;
+            }
+            
+            _recordButton.Text = text;
+            _recordButton.BackColor = backColor;
+            _recordButton.Enabled = enabled;
+        }
+
+        private void RecordButton_Click(object sender, EventArgs e)
+        {
+            _engine.ToggleRecording();
         }
 
         private void Log(string speaker, string message)
@@ -298,25 +189,6 @@ namespace LocalVoiceAssistant
                 e.Cancel = true;
                 this.Hide();
                 _trayIcon.ShowBalloonTip(2000, "Assistant Running", "I'm listening for the wake word in the background. Say 'Hey' to activate.", ToolTipIcon.Info);
-            }
-            else
-            {
-                if (_isRecording)
-                {
-                    try { _recorder.StopRecordingAsync().Wait(500); }
-                    catch
-                    {
-                        // ignored
-                    }
-                }
-                if (File.Exists(_tempAudioPath))
-                {
-                    try { File.Delete(_tempAudioPath); }
-                    catch
-                    {
-                        // ignored
-                    }
-                }
             }
         }
     }

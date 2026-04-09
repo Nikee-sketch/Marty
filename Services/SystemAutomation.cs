@@ -2,10 +2,11 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using NAudio.CoreAudioApi;
+using LocalVoiceAssistant.Interfaces;
 
-namespace LocalVoiceAssistant
+namespace LocalVoiceAssistant.Services
 {
-    public static class SystemAutomation
+    public class SystemAutomation : ISystemAutomation
     {
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool LockWorkStation();
@@ -36,24 +37,24 @@ namespace LocalVoiceAssistant
         private static extern uint SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, RecycleFlags dwFlags);
 
 
-        public static void LockScreen()
+        public void LockScreen()
         {
             LockWorkStation();
         }
 
-        public static void TurnOffScreen()
+        public void TurnOffScreen()
         {
             Form f = new Form();
             SendMessage(f.Handle, WmSyscommand, ScMonitorpower, MonitorOff);
             f.Dispose();
         }
 
-        public static void EmptyRecycleBin()
+        public void EmptyRecycleBin()
         {
             SHEmptyRecycleBin(IntPtr.Zero, null, RecycleFlags.SherbNoconfirmation | RecycleFlags.SherbNoprogressui | RecycleFlags.SherbNosound);
         }
 
-        public static void SetVolume(int percentage)
+        public void SetVolume(int percentage)
         {
             try
             {
@@ -67,7 +68,7 @@ namespace LocalVoiceAssistant
             }
         }
 
-        public static void KillApp(string processNameMatch)
+        public void KillApp(string processNameMatch)
         {
             foreach (var process in Process.GetProcesses())
             {
@@ -82,7 +83,7 @@ namespace LocalVoiceAssistant
             }
         }
 
-        public static void SetDoNotDisturb(bool enable)
+        public void SetDoNotDisturb(bool enable)
         {
             try
             {
@@ -95,7 +96,7 @@ namespace LocalVoiceAssistant
             }
         }
 
-        public static void LaunchWebsite(string url)
+        public void LaunchWebsite(string url)
         {
             var psi = new ProcessStartInfo 
             { 
@@ -110,7 +111,7 @@ namespace LocalVoiceAssistant
             }
         }
 
-        public static void CloseCurrentWindow()
+        public void CloseCurrentWindow()
         {
             IntPtr handle = GetForegroundWindow();
             if (handle != IntPtr.Zero)
@@ -119,18 +120,12 @@ namespace LocalVoiceAssistant
             }
         }
 
-        public static void LaunchApp(string appName)
+        public void LaunchApp(string appName)
         {
             var psi = new ProcessStartInfo { UseShellExecute = true };
             
             switch (appName.ToLowerInvariant())
             {
-                case "calculator":
-                    psi.FileName = "calc.exe";
-                    break;
-                case "explorer":
-                    psi.FileName = "explorer.exe";
-                    break;
                 case "rider":
                     psi.FileName = "rider64.exe";
                     break;
@@ -156,7 +151,5 @@ namespace LocalVoiceAssistant
                 Console.WriteLine("Could not launch app: " + ex.Message);
             }
         }
-        
-
     }
 }
